@@ -1,14 +1,11 @@
 import gleam/io
 import gleam/string
 
-import gecko/lexer.{Loc} as _
 import in
 import logging as ll
 
 // import glox/runner as run
 import glox/chunk.{type Chunk}
-import glox/lexer
-import glox/parser/parser
 import glox/runner as run
 import glox/vm.{type Vm}
 
@@ -51,10 +48,4 @@ fn loop() -> Result(Nil, #(Vm, Chunk, String)) {
       }
     Error(_) -> Error(#(vm.empty(), chunk.init(), "Could not read line"))
   }
-}
-
-fn get_chunk(s: String) {
-  let lexer = lexer.lexer()
-  let tokens = lexer.lex(lexer, Loc("repl", 0, 0), s, [])
-  parser.parse(chunk.init(), tokens)
 }

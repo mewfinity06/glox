@@ -1,5 +1,4 @@
 import gleam/io
-import gleam/option.{type Option}
 import gleam/string
 
 import argv
