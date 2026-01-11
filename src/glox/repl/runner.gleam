@@ -1,4 +1,5 @@
 import gleam/io
+import gleam/string
 
 import in
 import logging as ll
@@ -20,7 +21,7 @@ fn loop(vm: Vm) -> Result(Nil, String) {
   io.print("> ")
   case in.read_line() {
     Ok(line) ->
-      case line {
+      case string.trim(line) {
         ":quit" -> Ok(Nil)
         _ ->
           case run.interpret(vm, line) {

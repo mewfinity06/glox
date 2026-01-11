@@ -5,10 +5,8 @@ import clip/help
 import gleam/io
 import logging as ll
 
-import glox/lexer as lex
-import glox/vm
-
-import repl/repl
+import glox/checker/lexer as lex
+import glox/repl/runner as repl
 
 // CLI
 
@@ -52,19 +50,10 @@ pub fn main() {
 }
 
 // MAIN HELPERS
-fn from_file(file: String) -> Nil {
-  let chunk = lex.init_from_file(file)
-  let vm = vm.init(chunk)
-  case vm.run(vm) {
-    Error(e) -> {
-      let vm = case e {
-        #(vm, vm.Compile(e)) | #(vm, vm.Runtime(e)) -> {
-          ll.log(ll.Error, e)
-          vm
-        }
-      }
-      vm.display(vm)
-    }
-    Ok(final_vm) -> vm.display(final_vm)
-  }
+fn from_file(_file: String) -> Nil {
+  ll.log(ll.Info, "Tokens:")
+  let lexer = lex.lexer()
+  let tokens = lex.lex(lexer, "print 1 + 2;", [])
+  echo tokens
+  Nil
 }
