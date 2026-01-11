@@ -5,15 +5,18 @@ pub type DynArray(t) {
   DynArray(count: Int, capacity: Int, items: List(t))
 }
 
+/// Returns an empty dynamic array.
 pub fn empty() -> DynArray(t) {
   DynArray(0, 0, [])
 }
 
+/// Creates a dynamic array from a list.
 pub fn from(list: List(t)) -> DynArray(t) {
   let length = list.length(list)
   DynArray(length, next_pow_of_2(length), list)
 }
 
+/// Appends an item to the end of the dynamic array, growing if needed.
 pub fn write(dyn: DynArray(t), item: t) -> DynArray(t) {
   case dyn.capacity < dyn.count + 1 {
     True ->
@@ -31,6 +34,7 @@ pub fn write(dyn: DynArray(t), item: t) -> DynArray(t) {
   }
 }
 
+/// Prepends an item to the start of the dynamic array, growing if needed.
 pub fn write_head(dyn: DynArray(t), item: t) -> DynArray(t) {
   case dyn.capacity < dyn.count + 1 {
     True ->
@@ -47,6 +51,7 @@ pub fn write_head(dyn: DynArray(t), item: t) -> DynArray(t) {
   }
 }
 
+/// Gets the item at the given index, or returns `Error(Nil)` if out of bounds.
 pub fn get(dyn: DynArray(t), index: Int) -> Result(t, Nil) {
   case index >= 0 && index < dyn.count {
     True ->
@@ -58,14 +63,17 @@ pub fn get(dyn: DynArray(t), index: Int) -> Result(t, Nil) {
   }
 }
 
+/// Gets the first item in the dynamic array, or returns `Error(Nil)` if empty.
 pub fn get_head(dyn: DynArray(t)) -> Result(t, Nil) {
   get(dyn, 0)
 }
 
+/// Gets the last item in the dynamic array, or returns `Error(Nil)` if empty.
 pub fn get_tail(dyn: DynArray(t)) -> Result(t, Nil) {
   get(dyn, dyn.count - 1)
 }
 
+/// Returns the next capacity for growing the array.
 fn grow_capacity(n: Int) -> Int {
   case n < 8 {
     True -> 8
@@ -73,10 +81,12 @@ fn grow_capacity(n: Int) -> Int {
   }
 }
 
+/// Bitwise helper for next power of 2 calculation.
 fn or_and_shift(n: Int, by: Int) -> Int {
   int.bitwise_or(n, int.bitwise_shift_right(n, by))
 }
 
+/// Returns the next power of 2 greater than or equal to n.
 fn next_pow_of_2(n: Int) -> Int {
   let n = n - 1
   let n = or_and_shift(n, 1)

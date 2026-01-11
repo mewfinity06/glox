@@ -24,6 +24,7 @@ pub type Vm {
   )
 }
 
+/// Initializes a new VM with the given chunk.
 pub fn init(chunk: Chunk) -> Vm {
   let updated_chunk =
     chunk.Chunk(
@@ -41,6 +42,11 @@ pub fn init(chunk: Chunk) -> Vm {
   )
 }
 
+/// Returns an empty VM instance.
+pub fn empty() -> Vm {
+  init(chunk.init())
+}
+
 // VM ERROR
 
 pub type VmError {
@@ -48,6 +54,15 @@ pub type VmError {
   Runtime(String)
 }
 
+/// Converts a `VmError` to a human-readable string.
+pub fn error_to_string(err: VmError) -> String {
+  case err {
+    Compile(s) -> "compile error: " <> s
+    Runtime(s) -> "runtime error: " <> s
+  }
+}
+
+/// Returns a runtime error when an unexpected opcode is encountered.
 fn expect_error(
   vm: Vm,
   before: OpCode,
@@ -67,16 +82,19 @@ fn expect_error(
   ))
 }
 
+/// Returns a compile error result for the VM.
 fn error_compile(vm: Vm, msg: String) -> Result(Vm, #(Vm, VmError)) {
   Error(#(vm, Compile(msg)))
 }
 
+/// Returns a runtime error result for the VM.
 fn error_runtime(vm: Vm, msg: String) -> Result(Vm, #(Vm, VmError)) {
   Error(#(vm, Runtime(msg)))
 }
 
 // VM MANIPULATION
 
+/// Advances the VM instruction pointer and returns the next opcode, if any.
 fn next(vm: Vm) -> Option(#(Vm, OpCode)) {
   case vm.ip < vm.len {
     True ->
@@ -101,10 +119,12 @@ fn next(vm: Vm) -> Option(#(Vm, OpCode)) {
 
 // STACK MANIPULATION
 
+/// Pushes a value onto the VM stack, returning an error if full.
 fn stack_push(vm: Vm, value: Value) -> Result(Vm, VmError) {
   Ok(Vm(..vm, stack: dyn.write_head(vm.stack, value)))
 }
 
+/// Pushes a value onto the VM stack, panicking on error.
 fn stack_push_safe(vm: Vm, value: Value) -> Vm {
   case stack_push(vm, value) {
     Ok(ok) -> ok
@@ -112,6 +132,7 @@ fn stack_push_safe(vm: Vm, value: Value) -> Vm {
   }
 }
 
+/// Pops a value from the VM stack, returning an error if empty.
 fn stack_pop(vm: Vm) -> Result(#(Vm, Value), VmError) {
   case vm.stack.items {
     [top, ..rest] -> {
@@ -127,6 +148,7 @@ fn stack_pop(vm: Vm) -> Result(#(Vm, Value), VmError) {
   }
 }
 
+/// Pops a value from the VM stack, panicking on error.
 fn stack_pop_safe(vm: Vm) -> #(Vm, Value) {
   case stack_pop(vm) {
     Ok(ok) -> ok
@@ -142,12 +164,14 @@ fn stack_pop_safe(vm: Vm) -> #(Vm, Value) {
 // }
 
 // RUN HELPERS
+/// Pops two values, applies a binary operation, and pushes the result.
 fn binop(vm: Vm, func: fn(Value, Value) -> Value) -> Vm {
   let #(vm, b) = stack_pop_safe(vm)
   let #(vm, a) = stack_pop_safe(vm)
   stack_push_safe(vm, func(a, b))
 }
 
+/// Runs the VM, executing all opcodes in the chunk.
 pub fn run(vm: Vm) -> Result(Vm, #(Vm, VmError)) {
   case next(vm) {
     Some(#(vm, op)) ->
@@ -201,6 +225,7 @@ pub fn run(vm: Vm) -> Result(Vm, #(Vm, VmError)) {
   }
 }
 
+/// Helper for printing combined chunk constants and stack values.
 fn print_combined_helper(vm: Vm, i: Int, max_len: Int) -> Nil {
   let const_len = vm.chunk.consts.count
   case i >= max_len {
@@ -232,6 +257,7 @@ fn print_combined_helper(vm: Vm, i: Int, max_len: Int) -> Nil {
   }
 }
 
+/// Prints a table of chunk constants and stack values.
 fn print_combined(vm: Vm) -> Nil {
   printf("-----+----------+------+------~n", [])
   printf("num  | value    | slot | value~n", [])
@@ -243,6 +269,7 @@ fn print_combined(vm: Vm) -> Nil {
   }
 }
 
+/// Disassembles the chunk and prints the VM state.
 pub fn display(vm: Vm) -> Nil {
   chunk.disassemble(vm.chunk)
   io.println("")

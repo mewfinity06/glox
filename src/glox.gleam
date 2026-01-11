@@ -1,25 +1,37 @@
+import gleam/io
+import gleam/option.{type Option}
+import gleam/string
+
 import argv
 import clip.{type Command}
 import clip/arg
 import clip/help
-import gleam/io
+import clip/opt
 import logging as ll
+import simplifile as sf
 
-import glox/checker/lexer as lex
-import glox/repl/runner as repl
+import glox/repl
+import glox/runner as run
+import glox/vm
 
 // CLI
 
 type Cmd {
-  Repl
+  Repl(arg: String)
   File(file: String)
 }
 
+/// Returns the CLI command for running the REPL.
 fn repl_command() -> Command(Cmd) {
-  clip.return(Repl)
+  clip.command({
+    use arg <- clip.parameter
+    Repl(arg)
+  })
+  |> clip.opt(opt.new("arg") |> opt.default(""))
   |> clip.help(help.simple("repl", "Run the repl"))
 }
 
+/// Returns the CLI command for running a file.
 fn file_command() -> Command(Cmd) {
   clip.command({
     use file <- clip.parameter
@@ -29,6 +41,7 @@ fn file_command() -> Command(Cmd) {
   |> clip.help(help.simple("file", "Run from a file"))
 }
 
+/// Returns the root CLI command for the application.
 fn cli() -> Command(Cmd) {
   clip.subcommands_with_default([#("repl", repl_command())], file_command())
 }
@@ -44,16 +57,33 @@ pub fn main() {
 
   case result {
     Ok(File(file)) -> from_file(file)
-    Ok(Repl) -> repl.run()
+    Ok(Repl(arg)) ->
+      case string.length(arg) {
+        0 -> repl.run()
+        _ -> repl.run_with_command(arg)
+      }
     Error(e) -> io.print_error(e <> "\n")
   }
 }
 
 // MAIN HELPERS
-fn from_file(_file: String) -> Nil {
-  ll.log(ll.Info, "Tokens:")
-  let lexer = lex.lexer()
-  let tokens = lex.lex(lexer, "print 1 + 2;", [])
-  echo tokens
-  Nil
+/// Runs a Glox program from a file and displays the result.
+fn from_file(file: String) -> Nil {
+  ll.log(ll.Info, "Running file: " <> file)
+  case sf.read(file) {
+    Ok(source) -> {
+      let vm = case run.interpret(file, source) {
+        Ok(vm) -> {
+          // ll.log(ll.Info, "Successfully ran " <> file)
+          vm
+        }
+        Error(#(vm, _chunk, err)) -> {
+          ll.log(ll.Error, err)
+          vm
+        }
+      }
+      vm.display(vm)
+    }
+    Error(_) -> ll.log(ll.Error, "Could not read file " <> file)
+  }
 }

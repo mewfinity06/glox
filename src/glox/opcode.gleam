@@ -11,6 +11,7 @@ pub type OpCode {
   OpValue(Int)
 }
 
+/// Returns a string representation of an opcode.
 pub fn display(op: OpCode) -> String {
   case op {
     OpConstant -> "OpConstant"
@@ -24,6 +25,7 @@ pub fn display(op: OpCode) -> String {
   }
 }
 
+/// Returns the name of an opcode.
 pub fn name(op: OpCode) -> String {
   case op {
     OpValue(_) -> "OpValue"
@@ -31,6 +33,7 @@ pub fn name(op: OpCode) -> String {
   }
 }
 
+/// Returns the operand of an opcode as a string, if any.
 pub fn operand(op: OpCode) -> String {
   case op {
     OpValue(v) -> int.to_string(v)
