@@ -1,7 +1,0 @@
-Constant 1.2
-Constant 3.4
-Add
-Constant 5.6
-Div
-Neg
-Return
