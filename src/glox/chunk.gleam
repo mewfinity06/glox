@@ -35,23 +35,15 @@ pub fn init() -> Chunk {
 /// Writes a single opcode and line number to the chunk.
 pub fn write_code(chunk: Chunk, code: OpCode, line: Int) -> Chunk {
   Chunk(
+    ..chunk,
     codes: dyn.write(chunk.codes, code),
     lines: dyn.write(chunk.lines, line),
-    consts: chunk.consts,
-    start_codes: chunk.start_codes,
-    start_lines: chunk.start_lines,
   )
 }
 
 /// Writes a constant value and its line number to the chunk.
 pub fn write_const(chunk: Chunk, value: Value, line: Int) -> Chunk {
-  Chunk(
-    codes: dyn.write(chunk.codes, OpValue(chunk.consts.count)),
-    lines: dyn.write(chunk.lines, line),
-    consts: dyn.write(chunk.consts, value),
-    start_codes: chunk.start_codes,
-    start_lines: chunk.start_lines,
-  )
+  Chunk(..chunk, consts: dyn.write(chunk.consts, value))
 }
 
 /// Writes a list of opcodes to the chunk.
@@ -63,11 +55,11 @@ pub fn write_from_list(chunk: Chunk, list: List(OpCode)) -> Chunk {
 
 /// Disassembles the chunk and prints its opcodes and operands.
 pub fn disassemble(chunk: Chunk) -> Nil {
-  printf("-----+------+------------+--------~n", [])
+  printf("-----+------+------------+--------------~n", [])
   printf("addr | line | opcode     | operand~n", [])
-  printf("-----+------+------------+--------~n", [])
+  printf("-----+------+------------+--------------~n", [])
   disassemble_insts(chunk, chunk.start_codes, chunk.start_lines, 0, -1)
-  printf("-----+------+------------+--------~n", [])
+  printf("-----+------+------------+--------------~n", [])
 }
 
 /// Helper for disassembling and printing chunk instructions.

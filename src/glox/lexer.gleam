@@ -3,7 +3,7 @@ import gleam/int
 import gleam/list
 
 import gecko/builder as b
-import gecko/lexer.{type Loc, Loc}
+import gecko/lexer.{type Loc, Loc} as gl
 
 pub type TokenType {
   // ( )
@@ -66,7 +66,7 @@ pub type TokenType {
 }
 
 /// Returns a configured lexer for the language's token types.
-pub fn lexer() -> lexer.Lexer(TokenType) {
+pub fn lexer() -> gl.Lexer(TokenType) {
   b.init()
   |> b.keywords([
     #("and", KwAnd),
@@ -240,20 +240,11 @@ pub type Token {
   Token(loc: Loc, ty: TokenType)
 }
 
-/// Returns an end-of-file token.
-pub fn eof() -> Token {
-  Token(Loc("", -1, -1), Eof)
-}
-
-/// Lexes the source code into a list of tokens.
-pub fn lex(
-  lexer: lexer.Lexer(TokenType),
-  loc: Loc,
+pub fn collect(
+  lexer: gl.Lexer(TokenType),
+  file_path: String,
   source: String,
-  list: List(Token),
 ) -> List(Token) {
-  case lexer.next(lexer, source, loc) {
-    #(_, _, Eof) -> list
-    #(s, l, t) -> lex(lexer, l, s, list.append(list, [Token(l, t)]))
-  }
+  gl.collect(lexer, source, Loc(file_path, 0, 0), [])
+  |> list.map(fn(tc) { Token(tc.0, tc.1) })
 }

@@ -1,12 +1,29 @@
-// Prefix parse for unary minus
+import gleam/int
+import gleam/list
+import gleam/option.{type Option, None, Some}
+
+import gecko/lexer.{type Loc, Loc} as _
+
+import glox/chunk.{type Chunk}
+import glox/lexer.{type Token, type TokenType, Token, tt_debug} as lex
+import glox/opcode.{type OpCode} as op
+import glox/parser/precedence.{type Precedence} as prec
+import glox/values.{type Value}
+
 fn parse_unary(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case tokens {
-    [Token(loc, lex.Minus), ..tail] ->
-      // Parse the right-hand side as a unary expression
+    [Token(loc, lex.Minus), ..tail] -> {
       case parse_precedence_prefix(chunk, tail, prec.Unary) {
         Ok(#(chunk, tokens)) -> emit_byte(chunk, op.OpNeg, loc, tokens)
         Error(e) -> Error(e)
       }
+    }
+    [Token(loc, lex.Bang), ..tail] -> {
+      case parse_precedence_prefix(chunk, tail, prec.Unary) {
+        Ok(#(chunk, tokens)) -> emit_byte(chunk, op.OpNot, loc, tokens)
+        Error(e) -> Error(e)
+      }
+    }
     [tok, ..tail] -> pri_error(chunk, Expected(lex.Minus, tok), tail)
     [] -> pri_error(chunk, UnexpectedEof(Loc("parse_unary", 0, 0)), tokens)
   }
@@ -15,7 +32,9 @@ fn parse_unary(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
 // Prefix parse for grouping (parentheses)
 fn parse_grouping(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case parse_expression(chunk, tokens) {
-    Ok(#(chunk, [Token(_, lex.RParen), ..tail])) -> next(chunk, tail)
+    Ok(#(chunk, [Token(_, lex.RParen), ..tail])) -> {
+      next(chunk, tail)
+    }
     Ok(#(chunk, [tok, ..])) ->
       pri_error(chunk, Expected(lex.RParen, tok), tokens)
     Ok(_) ->
@@ -28,20 +47,6 @@ fn parse_grouping(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
 fn parse_expression(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   parse_precedence_prefix(chunk, tokens, prec.None)
 }
-
-import gleam/int
-import gleam/list
-import gleam/option.{type Option, None, Some}
-
-import gecko/lexer.{type Loc, Loc} as _
-
-import glox/chunk.{type Chunk}
-import glox/lexer.{type Token, type TokenType, Token, tt_debug} as lex
-import glox/opcode.{type OpCode} as op
-import glox/parser/precedence.{type Precedence} as prec
-
-// import glox/parser/precedence.{type Precedence, binding_power as bp}
-import glox/values.{type Value}
 
 pub type ParserResult =
   Result(Chunk, #(Chunk, ParserError))
@@ -59,7 +64,12 @@ fn pri_error(
 
 fn pri_expose(pri: ParserResultInner) -> ParserResult {
   case pri {
-    Ok(#(chunk, _tokens)) -> Ok(chunk)
+    Ok(#(chunk, tokens)) -> {
+      case tokens {
+        [] | [Token(_, lex.Eof), ..] -> Ok(chunk)
+        _ -> Error(#(chunk, Other("unexpected tokens after expression")))
+      }
+    }
     Error(#(chunk, err, _tokens)) -> Error(#(chunk, err))
   }
 }
@@ -74,6 +84,7 @@ pub fn parse(chunk: Chunk, tokens: List(Token)) -> ParserResult {
 fn next(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case tokens {
     [] -> emit_return(chunk, Loc("", 0, 0), [])
+    [Token(loc, lex.Eof), ..] -> emit_return(chunk, loc, [])
     [Token(loc, lex.Semi), ..tail] -> emit_return(chunk, loc, tail)
     tokens -> parse_expression(chunk, tokens)
   }
@@ -145,16 +156,55 @@ fn parse_binary(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case tokens {
     [Token(loc, ty), ..tail] -> {
       let op_prec = case ty {
-        lex.Plus -> Ok(#(op.OpAdd, prec.Term))
-        lex.Minus -> Ok(#(op.OpSub, prec.Term))
-        lex.Star -> Ok(#(op.OpMul, prec.Factor))
-        lex.Slash -> Ok(#(op.OpDiv, prec.Factor))
+        lex.Plus -> Ok(#([op.OpAdd], prec.Term))
+        lex.Minus -> Ok(#([op.OpSub], prec.Term))
+        lex.Star -> Ok(#([op.OpMul], prec.Factor))
+        lex.Slash -> Ok(#([op.OpDiv], prec.Factor))
+        lex.BangEql -> Ok(#([op.OpEql, op.OpNot], prec.Equality))
+        lex.EqlEql -> Ok(#([op.OpEql], prec.Equality))
+        lex.Grtr -> Ok(#([op.OpGrtr], prec.Comparison))
+        lex.GrtrEql -> Ok(#([op.OpLess, op.OpNot], prec.Comparison))
+        lex.Less -> Ok(#([op.OpLess], prec.Comparison))
+        lex.LessEql -> Ok(#([op.OpGrtr, op.OpNot], prec.Comparison))
         _ ->
           Error(pri_error(chunk, UnexpectedToken(loc, ty, "parse_binary"), tail))
       }
       case op_prec {
-        Ok(#(opcode, precedence)) ->
+        Ok(#(opcodes, precedence)) ->
           // Parse the right-hand side with higher precedence
+          case
+            parse_precedence_prefix(
+              chunk,
+              tail,
+              prec.from_int(prec.binding_power(precedence) + 1),
+            )
+          {
+            Ok(#(chunk, tokens)) -> emit_bytes(chunk, opcodes, loc, tokens)
+            Error(e) -> Error(e)
+          }
+        Error(e) -> e
+      }
+    }
+    [] -> pri_error(chunk, UnexpectedEof(Loc("parse_binary", 0, 0)), tokens)
+  }
+}
+
+fn parse_comparison(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
+  case tokens {
+    [Token(loc, ty), ..tail] -> {
+      let op_prec = case ty {
+        lex.EqlEql -> Ok(#(op.OpEql, prec.Equality))
+        lex.Grtr -> Ok(#(op.OpGrtr, prec.Comparison))
+        lex.Less -> Ok(#(op.OpLess, prec.Comparison))
+        _ ->
+          Error(pri_error(
+            chunk,
+            UnexpectedToken(loc, ty, "parse_comparison"),
+            tail,
+          ))
+      }
+      case op_prec {
+        Ok(#(opcode, precedence)) ->
           case
             parse_precedence_prefix(
               chunk,
@@ -168,14 +218,14 @@ fn parse_binary(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
         Error(e) -> e
       }
     }
-    [] -> pri_error(chunk, UnexpectedEof(Loc("parse_binary", 0, 0)), tokens)
+    [] -> pri_error(chunk, UnexpectedEof(Loc("parse_comparison", 0, 0)), tokens)
   }
 }
 
 fn parse_number(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case tokens {
     [Token(loc, lex.Number(x)), ..tail] ->
-      emit_const(chunk, int.to_float(x), loc, tail)
+      emit_const(chunk, values.ValNumber(x), loc, tail)
     [tok, ..tail] -> pri_error(chunk, Expected(lex.Number(0), tok), tail)
     [] -> pri_error(chunk, UnexpectedEof(Loc("", 0, 0)), tokens)
   }
@@ -183,8 +233,24 @@ fn parse_number(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
 
 fn parse_float(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
   case tokens {
-    [Token(loc, lex.Float(x)), ..tail] -> emit_const(chunk, x, loc, tail)
+    [Token(loc, lex.Float(x)), ..tail] ->
+      emit_const(chunk, values.ValFloat(x), loc, tail)
     [tok, ..tail] -> pri_error(chunk, Expected(lex.Number(0), tok), tail)
+    [] -> pri_error(chunk, UnexpectedEof(Loc("", 0, 0)), tokens)
+  }
+}
+
+fn parse_literal(chunk: Chunk, tokens: List(Token)) -> ParserResultInner {
+  case tokens {
+    [Token(loc, lex.KwFalse), ..tail] -> emit_byte(chunk, op.OpFalse, loc, tail)
+    [Token(loc, lex.KwTrue), ..tail] -> emit_byte(chunk, op.OpTrue, loc, tail)
+    [Token(loc, lex.KwNil), ..tail] -> emit_byte(chunk, op.OpNil, loc, tail)
+    [tok, ..tail] ->
+      pri_error(
+        chunk,
+        ExpectedMany([lex.KwFalse, lex.KwTrue, lex.KwNil], tok),
+        tail,
+      )
     [] -> pri_error(chunk, UnexpectedEof(Loc("", 0, 0)), tokens)
   }
 }
@@ -229,10 +295,26 @@ fn get_rule(tt: lex.TokenType) -> ParserRule {
       #(fn() { tt == lex.LParen }, rule_prefix(parse_grouping, prec.None)),
       #(fn() { lex.is_number(tt) }, rule_prefix(parse_number, prec.None)),
       #(fn() { lex.is_float(tt) }, rule_prefix(parse_float, prec.None)),
+      #(fn() { tt == lex.KwFalse }, rule_prefix(parse_literal, prec.None)),
+      #(fn() { tt == lex.KwTrue }, rule_prefix(parse_literal, prec.None)),
+      #(fn() { tt == lex.KwNil }, rule_prefix(parse_literal, prec.None)),
+      #(fn() { tt == lex.Bang }, rule_prefix(parse_unary, prec.Unary)),
       // Infix
       #(fn() { tt == lex.Plus }, rule_infix(parse_binary, prec.Term)),
       #(fn() { tt == lex.Slash }, rule_infix(parse_binary, prec.Factor)),
       #(fn() { tt == lex.Star }, rule_infix(parse_binary, prec.Factor)),
+      #(fn() { tt == lex.BangEql }, rule_infix(parse_comparison, prec.Equality)),
+      #(fn() { tt == lex.EqlEql }, rule_infix(parse_comparison, prec.Equality)),
+      #(fn() { tt == lex.Grtr }, rule_infix(parse_comparison, prec.Comparison)),
+      #(
+        fn() { tt == lex.GrtrEql },
+        rule_infix(parse_comparison, prec.Comparison),
+      ),
+      #(fn() { tt == lex.Less }, rule_infix(parse_comparison, prec.Comparison)),
+      #(
+        fn() { tt == lex.LessEql },
+        rule_infix(parse_comparison, prec.Comparison),
+      ),
       // Base
       #(fn() { tt == lex.RParen }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.LBrace }, ParserRule(None, None, prec.None)),
@@ -240,29 +322,18 @@ fn get_rule(tt: lex.TokenType) -> ParserRule {
       #(fn() { tt == lex.Comma }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.Dot }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.Semi }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.Bang }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.BangEql }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.Eql }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.EqlEql }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.Grtr }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.GrtrEql }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.Less }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.LessEql }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.Bang }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwAnd }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwClass }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwElse }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.KwFalse }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwFor }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwFun }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwIf }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.KwNil }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwOr }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwPrint }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwReturn }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwSuper }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwThis }, ParserRule(None, None, prec.None)),
-      #(fn() { tt == lex.KwTrue }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwVar }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.KwWhile }, ParserRule(None, None, prec.None)),
       #(fn() { tt == lex.Eof }, ParserRule(None, None, prec.None)),
@@ -290,15 +361,22 @@ fn emit_byte(
 }
 
 // /// Emits a list of bytecode instructions into the chunk.
-// fn emit_bytes(parser: Parser, chunk: Chunk, ops: List(OpCode)) -> Chunk {
-//   case ops {
-//     [] -> chunk
-//     [op, ..ops] -> {
-//       let chunk = emit_byte(parser, chunk, op)
-//       emit_bytes(parser, chunk, ops)
-//     }
-//   }
-// }
+fn emit_bytes(
+  chunk: Chunk,
+  ops: List(OpCode),
+  loc: Loc,
+  tokens: List(Token),
+) -> ParserResultInner {
+  case ops {
+    [] -> Ok(#(chunk, tokens))
+    [op, ..ops] -> {
+      case emit_byte(chunk, op, loc, tokens) {
+        Ok(#(chunk, tokens)) -> emit_bytes(chunk, ops, loc, tokens)
+        Error(e) -> Error(e)
+      }
+    }
+  }
+}
 
 /// Emits a constant value into the chunk.
 fn emit_const(
@@ -308,7 +386,8 @@ fn emit_const(
   tokens: List(Token),
 ) -> ParserResultInner {
   let chunk = chunk.write_const(chunk, value, loc.row)
-  Ok(#(chunk, tokens))
+  let index = chunk.consts.count - 1
+  emit_bytes(chunk, [op.OpConstant, op.OpValue(index)], loc, tokens)
 }
 
 /// Emits a return instruction into the chunk.
@@ -321,6 +400,7 @@ fn emit_return(chunk: Chunk, loc: Loc, tokens: List(Token)) -> ParserResultInner
 pub type ParserError {
   Generic(token: Token, msg: String)
   Expected(expected: TokenType, got: Token)
+  ExpectedMany(expected: List(TokenType), got: Token)
   ExpectedIdent(loc: Loc, got: TokenType)
   UnexpectedToken(loc: Loc, tt: TokenType, in: String)
   UnexpectedEof(loc: Loc)
@@ -330,6 +410,13 @@ pub type ParserError {
 /// Returns a string representation of a location in the source file.
 fn loc_display(loc: Loc) -> String {
   loc.file <> ":" <> int.to_string(loc.row) <> ":" <> int.to_string(loc.col)
+}
+
+fn get_debuged_list(list: List(x), f: fn(x) -> String, acc: String) -> String {
+  case list {
+    [x, ..xs] -> get_debuged_list(xs, f, acc <> ", " <> f(x))
+    [] -> acc
+  }
 }
 
 /// Converts a `ParserError` to a human-readable string.
@@ -343,6 +430,12 @@ pub fn error_print(err: ParserError) -> String {
       <> tt_debug(got)
       <> " but got "
       <> tt_debug(expected)
+    ExpectedMany(expected, Token(loc, got)) ->
+      loc_display(loc)
+      <> ": expected one of "
+      <> expected |> get_debuged_list(tt_debug, "")
+      <> "but got "
+      <> tt_debug(got)
     ExpectedIdent(loc, got) ->
       loc_display(loc) <> ": expected ident but got " <> tt_debug(got)
     UnexpectedToken(loc, ty, in) ->

@@ -69,20 +69,19 @@ pub fn main() {
 /// Runs a Glox program from a file and displays the result.
 fn from_file(file: String) -> Nil {
   ll.log(ll.Info, "Running file: " <> file)
-  case sf.read(file) {
-    Ok(source) -> {
-      let vm = case run.interpret(file, source) {
-        Ok(vm) -> {
-          // ll.log(ll.Info, "Successfully ran " <> file)
-          vm
-        }
-        Error(#(vm, _chunk, err)) -> {
-          ll.log(ll.Error, err)
-          vm
-        }
-      }
-      vm.display(vm)
+  let source = case sf.read(file) {
+    Ok(source) -> source
+    Error(_) -> {
+      ll.log(ll.Error, "Could not read file " <> file)
+      ""
     }
-    Error(_) -> ll.log(ll.Error, "Could not read file " <> file)
+  }
+  ll.log(ll.Info, "entering interpret")
+  case run.interpret(file, source) {
+    Ok(vm) -> vm.display(vm)
+    Error(e) -> {
+      io.println_error("Error: " <> e.2)
+      Nil
+    }
   }
 }

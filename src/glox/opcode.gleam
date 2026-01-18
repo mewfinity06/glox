@@ -4,11 +4,18 @@ pub type OpCode {
   OpConstant
   OpReturn
   OpNeg
+  OpNot
+  OpDiv
+  OpNil
+  OpTrue
+  OpEql
+  OpGrtr
+  OpLess
   OpAdd
   OpSub
   OpMul
-  OpDiv
-  OpValue(Int)
+  OpFalse
+  OpValue(sp: Int)
 }
 
 /// Returns a string representation of an opcode.
@@ -17,10 +24,17 @@ pub fn display(op: OpCode) -> String {
     OpConstant -> "OpConstant"
     OpReturn -> "OpReturn"
     OpNeg -> "OpNeg"
+    OpNot -> "OpNot"
+    OpEql -> "OpEql"
+    OpGrtr -> "OpGrtr"
+    OpLess -> "OpLess"
     OpAdd -> "OpAdd"
     OpSub -> "OpSub"
     OpMul -> "OpMul"
     OpDiv -> "OpDiv"
+    OpNil -> "OpNil"
+    OpTrue -> "OpTrue"
+    OpFalse -> "OpFalse"
     OpValue(v) -> "OpValue(" <> int.to_string(v) <> ")"
   }
 }

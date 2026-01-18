@@ -19,8 +19,9 @@ pub fn run() -> Nil {
 }
 
 pub fn run_with_command(s: String) -> Nil {
+  ll.log(ll.Info, "Running command `" <> s <> "`")
   case run.interpret("repl", s) {
-    Ok(_) -> Nil
+    Ok(vm) -> vm.display(vm)
     Error(e) -> {
       io.println_error("Error: " <> e.2)
       Nil
